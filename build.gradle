@@ -1,0 +1,92 @@
+plugins {
+	// Fabric Loom — сборочный плагин для модов Fabric
+	id 'fabric-loom' version '1.19.4'
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Только надёжные Maven-репозитории (без JitPack, который часто недоступен)
+	mavenCentral()
+	maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+}
+
+sourceSets {
+	client {
+		compileClasspath += main.compileClasspath
+		runtimeClasspath += main.runtimeClasspath
+	}
+}
+
+loom {
+	// Клиентский сурсет со своим набором миксинов
+	// (см. src/client/java + src/client/resources/sheepcapes.client.mixins.json)
+	client {
+		source(sourceSets.client)
+		config("sheepcapes.client.mixins.json")
+	}
+}
+
+dependencies {
+	// Ядро: Minecraft + маппинги Yarn + Fabric Loader + Fabric API
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": inputs.properties.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+	it.options.encoding = "UTF-8"
+	it.options.compilerArgs += ["-Xlint:-processing"]
+}
+
+java {
+	// Для MC 1.20.5+ обязателен Java 21
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+	inputs.property "archivesName", project.base.archivesName
+
+	from("LICENSE") {
+		rename { "${it}_${inputs.properties.archivesName}" }
+	}
+}
+
+// ---------------------------------------------------------------------------
+//  ЗАДАЧА Copy: после ./gradlew build готовый .jar автоматически
+//  переносится из build/libs/ в корень проекта (рядом с build.gradle)
+// ---------------------------------------------------------------------------
+tasks.register('copyModJar', Copy) {
+	group = 'sheepcapes'
+	description = 'Copies the built mod .jar from build/libs into the project root.'
+
+	from(tasks.named('remapJar'))          // берём именно ремэпленный (рабочий) jar
+	include '*.jar'
+	into project.rootDir                   // /workspace (корень проекта)
+
+	// исключаем служебные сборки, оставляем только сам мод
+	exclude '*-sources.jar'
+}
+
+// вешаем копирование на конец жизненного цикла build
+tasks.named('build') {
+	finalizedBy tasks.named('copyModJar')
+}
